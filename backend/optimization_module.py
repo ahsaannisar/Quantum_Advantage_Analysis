@@ -7,7 +7,7 @@ def classical_maxcut():
     best = 0
     nodes = list(G.nodes)
 
-    start = time.time()
+    start = time.perf_counter()
     for i in range(2**len(nodes)):
         bitstring = format(i, f"0{len(nodes)}b")
         cut = 0
@@ -15,7 +15,7 @@ def classical_maxcut():
             if bitstring[u] != bitstring[v]:
                 cut += 1
         best = max(best, cut)
-    end = time.time()
+    end = time.perf_counter()
 
     return best, end - start
 
@@ -28,7 +28,7 @@ def quantum_qaoa_simulated():
 
     G = nx.complete_graph(4)
 
-    start = time.time()
+    start = time.perf_counter()
 
     # simulate quantum overhead
     time.sleep(0.2)
@@ -42,6 +42,6 @@ def quantum_qaoa_simulated():
         if bitstring[u] != bitstring[v]:
             cut += 1
 
-    end = time.time()
+    end = time.perf_counter()
 
     return cut, end - start

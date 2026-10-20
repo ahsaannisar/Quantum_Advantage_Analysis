@@ -11,9 +11,9 @@ def classical_ml():
 
     model = LogisticRegression(max_iter=200)
 
-    start = time.time()
+    start = time.perf_counter()
     model.fit(X_train, y_train)
-    end = time.time()
+    end = time.perf_counter()
 
     accuracy = model.score(X_test, y_test)
     return accuracy, end - start
@@ -28,7 +28,7 @@ def quantum_ml_simulated():
     X_train, X_test, y_train, y_test = train_test_split(
         data.data, data.target, test_size=0.3)
 
-    start = time.time()
+    start = time.perf_counter()
 
     # simulate quantum overhead
     time.sleep(0.3)
@@ -36,6 +36,6 @@ def quantum_ml_simulated():
     # simulated slightly noisy accuracy
     accuracy = 0.85 + random.uniform(-0.05, 0.05)
 
-    end = time.time()
+    end = time.perf_counter()
 
     return accuracy, end - start

@@ -1,213 +1,125 @@
-import matplotlib
-matplotlib.use('Agg')
-
-from flask import Flask, request
-import matplotlib.pyplot as plt
-import os
-import pandas as pd
+import math
+from pathlib import Path
 import time
 
+from flask import Flask, render_template, request
+from matplotlib.figure import Figure
+import pandas as pd
+
 from backend.search_module import classical_search, quantum_search
+from backend.noise_analysis import noise_comparison
 from backend.optimization_module import classical_maxcut, quantum_qaoa_simulated
 from backend.ml_module import classical_ml, quantum_ml_simulated
 
 app = Flask(__name__)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
+
 
 @app.route("/", methods=["GET", "POST"])
 def home():
-
-    result_html = ""
+    size_input = request.form.get("sizes", "")
+    noise_input = request.form.get("noise", "")
+    context = {"size_input": size_input, "noise_input": noise_input}
 
     if request.method == "POST":
-
-        os.makedirs("frontend/static", exist_ok=True)
-        os.makedirs("results", exist_ok=True)
-
-        # ===============================
-        # USER INPUT
-        # ===============================
-        size_input = request.form["sizes"]
-        noise_input = request.form["noise"]
-
         try:
             sizes = [int(x.strip()) for x in size_input.split(",")]
             noise_levels = [float(x.strip()) for x in noise_input.split(",")]
-        except:
-            return "<h3>Invalid input format. Use comma separated values.</h3>"
+            if any(size <= 0 for size in sizes):
+                raise ValueError
+            if any(
+                not math.isfinite(level) or not 0 <= level <= 4 / 3
+                for level in noise_levels
+            ):
+                raise ValueError
+        except ValueError:
+            context["error"] = (
+                "Use comma-separated positive integers for problem sizes and finite "
+                "numbers between 0 and 4/3 for noise levels (e.g. 0,0.05,0.1,0.2)."
+            )
+            return render_template("index.html", **context), 400
 
-        # ===============================
-        # 1️⃣ SEARCH SCALABILITY
-        # ===============================
+        static_dir = Path(app.static_folder)
+        static_dir.mkdir(parents=True, exist_ok=True)
+
+        # The existing quantum circuit stays fixed at two qubits for every size.
         classical_times = []
         quantum_times = []
+        for size in sizes:
+            _, c_time = classical_search(size, size - 1)
+            _, q_time = quantum_search()
+            classical_times.append(c_time)
+            quantum_times.append(q_time)
 
-        for s in sizes:
-            c_res, c_t = classical_search(s, s-1)
-            q_res, q_t = quantum_search()
-            classical_times.append(c_t)
-            quantum_times.append(q_t)
+        fig = Figure()
+        ax = fig.subplots()
+        ax.plot(sizes, classical_times, marker="o", label="Classical Search")
+        ax.plot(sizes, quantum_times, marker="o", label="Fixed 2-Qubit Circuit")
+        ax.set_title("Search Size and Fixed Circuit Execution Times")
+        ax.set_xlabel("Classical Search Size")
+        ax.set_ylabel("Execution Time (seconds)")
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(static_dir / "scalability.png")
 
-        plt.figure()
-        plt.plot(sizes, classical_times, marker='o')
-        plt.plot(sizes, quantum_times, marker='o')
-        plt.title("Scalability Comparison")
-        plt.xlabel("Problem Size")
-        plt.ylabel("Execution Time (seconds)")
-        plt.legend(["Classical", "Quantum"])
-        plt.tight_layout()
-        plt.savefig("frontend/static/scalability.png")
-        plt.close()
+        noise_levels, noise_times = noise_comparison(noise_levels)
+        fig = Figure()
+        ax = fig.subplots()
+        ax.plot(noise_levels, noise_times, marker="o")
+        ax.set_title("Noise Parameter and Simulator Execution Time")
+        ax.set_xlabel("Depolarizing Parameter")
+        ax.set_ylabel("Execution Time (seconds)")
+        fig.tight_layout()
+        fig.savefig(static_dir / "noise.png")
 
-        # ===============================
-        # 2️⃣ NOISE IMPACT
-        # ===============================
-        from qiskit_aer.noise import NoiseModel, depolarizing_error
-        from qiskit import QuantumCircuit
-        from qiskit_aer import AerSimulator
-
-        noise_times = []
-
-        for level in noise_levels:
-
-            noise_model = NoiseModel()
-            error = depolarizing_error(level, 1)
-            noise_model.add_all_qubit_quantum_error(error, ['h'])
-
-            sim = AerSimulator(noise_model=noise_model)
-            qc = QuantumCircuit(1)
-            qc.h(0)
-            qc.measure_all()
-
-            start = time.time()
-            sim.run(qc, shots=1000).result()
-            end = time.time()
-
-            noise_times.append(end - start)
-
-        plt.figure()
-        plt.plot(noise_levels, noise_times, marker='o')
-        plt.title("Noise Impact on Execution Time")
-        plt.xlabel("Noise Level")
-        plt.ylabel("Execution Time (seconds)")
-        plt.tight_layout()
-        plt.savefig("frontend/static/noise.png")
-        plt.close()
-
-        # ===============================
-        # 3️⃣ OPTIMIZATION
-        # ===============================
         c_cut, c_time = classical_maxcut()
         q_cut, q_time = quantum_qaoa_simulated()
-
         opt_df = pd.DataFrame({
-            "Algorithm": ["Classical MaxCut", "Quantum QAOA (Simulated)"],
+            "Algorithm": ["Classical MaxCut", "QAOA Placeholder (Random Partition)"],
             "Cut Value": [c_cut, q_cut],
-            "Execution Time": [round(c_time,6), round(q_time,6)]
+            "Execution Time (seconds)": [c_time, q_time],
         })
+        context["opt_table"] = opt_df.to_html(
+            classes="table table-striped table-dark", index=False,
+            float_format=lambda value: f"{value:.6g}",
+        )
 
-        opt_table = opt_df.to_html(classes="table table-striped table-dark", index=False)
-
-        # ===============================
-        # 4️⃣ MACHINE LEARNING
-        # ===============================
         c_acc, c_ml_time = classical_ml()
         q_acc, q_ml_time = quantum_ml_simulated()
-
-        plt.figure()
-        plt.bar(["Classical ML", "Quantum ML"], [c_ml_time, q_ml_time])
-        plt.title("ML Training Time Comparison")
-        plt.ylabel("Training Time (seconds)")
-        plt.tight_layout()
-        plt.savefig("frontend/static/ml.png")
-        plt.close()
+        fig = Figure()
+        ax = fig.subplots()
+        ax.bar(["Classical ML", "Quantum ML Placeholder"], [c_ml_time, q_ml_time])
+        ax.set_title("Model Fit and Placeholder Execution Times")
+        ax.set_ylabel("Execution Time (seconds)")
+        fig.tight_layout()
+        fig.savefig(static_dir / "ml.png")
 
         ml_df = pd.DataFrame({
-            "Model": ["Classical ML", "Quantum ML (Simulated)"],
-            "Accuracy": [round(c_acc,3), round(q_acc,3)],
-            "Training Time": [round(c_ml_time,6), round(q_ml_time,6)]
+            "Model": ["Classical ML", "Quantum ML Placeholder (Random Accuracy)"],
+            "Accuracy": [round(c_acc, 3), round(q_acc, 3)],
+            "Execution Time (seconds)": [c_ml_time, q_ml_time],
         })
+        context["ml_table"] = ml_df.to_html(
+            classes="table table-striped table-dark", index=False,
+            float_format=lambda value: f"{value:.6g}",
+        )
 
-        ml_table = ml_df.to_html(classes="table table-striped table-dark", index=False)
-
-        # ===============================
-        # 5️⃣ AUTO CONCLUSION
-        # ===============================
         if sum(classical_times) < sum(quantum_times):
-            conclusion = """
-            For the tested problem sizes, classical algorithms outperform 
-            quantum implementations due to simulator overhead and noise.
-            """
+            context["conclusion"] = (
+                "The summed classical search time was lower than the summed "
+                "fixed-circuit simulator time in this run."
+            )
+        elif sum(classical_times) > sum(quantum_times):
+            context["conclusion"] = (
+                "The summed fixed-circuit simulator time was lower than the summed "
+                "classical search time in this run."
+            )
         else:
-            conclusion = """
-            Quantum methods show scalability advantages as problem size increases.
-            """
+            context["conclusion"] = "The summed search and simulator times were equal in this run."
+        context["run_id"] = time.time_ns()
 
-        result_html = f"""
-        <div class="mt-5">
+    return render_template("index.html", **context)
 
-            <h2>📈 Scalability Analysis</h2>
-            <img src="/static/scalability.png" class="img-fluid rounded shadow">
-
-            <h2 class="mt-5">⚡ Noise Impact Analysis</h2>
-            <img src="/static/noise.png" class="img-fluid rounded shadow">
-
-            <h2 class="mt-5">🔍 Optimization Comparison</h2>
-            {opt_table}
-
-            <h2 class="mt-5">🤖 Machine Learning Comparison</h2>
-            <img src="/static/ml.png" class="img-fluid rounded shadow">
-            {ml_table}
-
-            <h2 class="mt-5"> Conclusion</h2>
-            <div class="alert alert-info">
-                {conclusion}
-            </div>
-
-        </div>
-        """
-
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Quantum Advantage Research Platform</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="bg-dark text-light">
-        <div class="container mt-5">
-
-            <div class="text-center mb-4">
-                <h1 class="fw-bold">Quantum Advantage Research Platform</h1>
-                <p class="lead">Evaluating When Quantum Algorithms Do Not Provide Practical Benefit</p>
-            </div>
-
-            <form method="POST" class="card p-4 bg-secondary shadow-lg">
-
-                <div class="mb-3">
-                    <label class="form-label">Enter Problem Sizes (comma separated)</label>
-                    <input type="text" name="sizes" class="form-control" placeholder="8,16,32,64,128" required>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Enter Noise Levels (comma separated)</label>
-                    <input type="text" name="noise" class="form-control" placeholder="0,0.05,0.1,0.2" required>
-                </div>
-
-                <button type="submit" class="btn btn-success btn-lg w-100">
-                    Run Full Experimental Analysis
-                </button>
-            </form>
-
-            {result_html}
-
-            <div class="text-center mt-5 text-muted">
-                <small>Academic Research Tool - Quantum Performance Evaluation</small>
-            </div>
-
-        </div>
-    </body>
-    </html>
-    """
 
 if __name__ == "__main__":
     app.run(debug=True)

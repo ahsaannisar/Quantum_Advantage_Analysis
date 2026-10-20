@@ -1,25 +1,74 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Quantum Advantage Analysis</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quantum Advantage Research Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
-    <h1>Quantum vs Classical Comparison</h1>
+<body class="bg-dark text-light">
+    <main class="container mt-5">
+        <div class="text-center mb-4">
+            <h1 class="fw-bold">Quantum Advantage Research Platform</h1>
+            <p class="lead">Exploring Classical Algorithms and Quantum Simulation Overhead</p>
+        </div>
 
-    <h2>Search Problem</h2>
-    <p>Classical Output: {{ classical_result }}</p>
-    <p>Classical Time: {{ classical_time }}</p>
-    <p>Quantum Output: {{ quantum_result }}</p>
-    <p>Quantum Time: {{ quantum_time }}</p>
+        {% if error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+        {% endif %}
 
-    <h2>Optimization (MaxCut)</h2>
-    <p>MaxCut Value: {{ maxcut_value }}</p>
-    <p>Execution Time: {{ maxcut_time }}</p>
+        <form method="POST" class="card p-4 bg-secondary shadow-lg">
+            <div class="mb-3">
+                <label class="form-label" for="sizes">Enter Problem Sizes (comma separated)</label>
+                <input id="sizes" type="text" name="sizes" class="form-control"
+                       placeholder="8,16,32,64,128" value="{{ size_input }}" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="noise">Enter Noise Levels (comma separated)</label>
+                <input id="noise" type="text" name="noise" class="form-control"
+                       placeholder="0,0.05,0.1,0.2" value="{{ noise_input }}" required>
+            </div>
+            <button type="submit" class="btn btn-success btn-lg w-100">
+                Run Full Experimental Analysis
+            </button>
+        </form>
 
-    <h2>Machine Learning</h2>
-    <p>Accuracy: {{ accuracy }}</p>
-    <p>Training Time: {{ ml_time }}</p>
+        {% if run_id %}
+        <div class="mt-5">
+            <h2>📈 Search Timing Analysis</h2>
+            <p>The classical search size changes; the quantum circuit remains fixed at two qubits
+               and does not receive the size or target. These timings do not establish quantum scalability.</p>
+            <img src="{{ url_for('static', filename='scalability.png', v=run_id) }}"
+                 class="img-fluid rounded shadow" alt="Classical search and fixed quantum circuit execution times">
 
+            <h2 class="mt-5">⚡ Noise Timing Analysis</h2>
+            <p>This measures simulator execution time for a one-qubit circuit, not accuracy or search success.</p>
+            <img src="{{ url_for('static', filename='noise.png', v=run_id) }}"
+                 class="img-fluid rounded shadow" alt="Simulator execution time by depolarizing parameter">
+
+            <h2 class="mt-5">🔍 Optimization Comparison</h2>
+            <p>The QAOA-labelled function uses a random partition and a 0.2-second delay; it does not run QAOA.</p>
+            <div class="table-responsive">{{ opt_table | safe }}</div>
+
+            <h2 class="mt-5">🤖 Machine Learning Comparison</h2>
+            <p>Classical ML fits logistic regression on Iris. The quantum ML placeholder returns
+               random accuracy with a 0.3-second delay; it does not train a model.</p>
+            <img src="{{ url_for('static', filename='ml.png', v=run_id) }}"
+                 class="img-fluid rounded shadow" alt="Logistic regression fit and quantum ML placeholder times">
+            <div class="table-responsive">{{ ml_table | safe }}</div>
+
+            <h2 class="mt-5">Conclusion</h2>
+            <div class="alert alert-info">
+                {{ conclusion }}
+                The workloads differ, so these measurements cannot demonstrate quantum advantage
+                or attribute timing differences to noise.
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="text-center mt-5 mb-4">
+            <small>Academic Demonstration - Quantum Performance Evaluation</small>
+        </div>
+    </main>
 </body>
 </html>
